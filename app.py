@@ -1,5 +1,11 @@
 import streamlit as st
 from datetime import time
+import mne
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import random
+import tempfile, os
 
 st.set_page_config(page_title="Sleep App - TFG", layout="wide")
 
@@ -10,11 +16,71 @@ tab1, tab2, tab3 = st.tabs(["📊 Calcula el teu SCORE", "🧪 Simulador de son"
 
 with tab1:
     st.header("Anàlisi de la qualitat del son")
-    st.info("Puja el teu fitxer .edf per començar.")
-    file_score = st.file_uploader("Aquí ⬇️", type=["edf"], key="score_uploader")
 
-    if file_score is not None:
-        st.success(f"Fitxer {file_score.name} carregat amb èxit!")
+    # PER ACABAR: afegir via 2 del EDF
+
+    if 'stages_per_score' not in st.session_state:
+        st.info("Puja el teu fitxer .edf o utilitza el Simulador per calcular el teu score.")
+    
+    else:
+        stages = st.session_state['stages_per_score']
+
+        total_epochs = len(stages)
+        sleep_epochs = total_epochs - 10
+        total_seconds = sleep_epochs * 30
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        counts = pd.Series(stages).value_counts()
+        total = len(stages)
+
+        pct_rem = round(counts.get('R', 0) / total * 100, 1)
+        pct_n3  = round(counts.get('N3', 0) / total * 100, 1)
+        pct_w   = round(counts.get('W', 0) / total * 100, 1)
+
+        stages_core = stages[5:-5]
+        transicions_w = sum(
+            1 for i in range(1, len(stages_core))
+            if stages_core[i] == 'W' and stages_core[i-1] != 'W'
+        )
+
+        durada_hores = (sleep_epochs * 30) / 3600
+
+        rem_score  = max(0, min(100, (pct_rem / 22.5) * 100))
+        frag_score = max(0, min(100, (1 - transicions_w / 30) * 100))
+
+        if durada_hores >= 6:
+            dur_score = 100
+        elif durada_hores >= 4:
+            dur_score = ((durada_hores - 4) / 2) * 100
+        else:
+            dur_score = 0
+
+        score_final = round(rem_score * 0.40 + frag_score * 0.35 + dur_score * 0.25)
+
+        st.divider()
+        st.subheader("📊 Resultats")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("⏱️ Durada", f"{hours}h {minutes}min")
+        col2.metric("💤 REM", f"{pct_rem}%")
+        col3.metric("🌊 N3", f"{pct_n3}%")
+        col4.metric("⚡ Despertars", f"{transicions_w}")
+
+        st.divider()
+        st.subheader("🏆 Score de qualitat del son")
+
+        color = "green" if score_final >= 70 else "orange" if score_final >= 50 else "red"
+        st.markdown(f"## :{color}[{score_final} / 100]")
+
+        with st.expander("🔍 Descomposició del score"):
+            st.write(f"- **REM** ({pct_rem}% → {round(rem_score,1)} pts) × 0.40 = **{round(rem_score*0.40,1)}**")
+            st.write(f"- **Fragmentació** ({transicions_w} despertars → {round(frag_score,1)} pts) × 0.35 = **{round(frag_score*0.35,1)}**")
+            st.write(f"- **Durada** ({durada_hores:.1f}h → {round(dur_score,1)} pts) × 0.25 = **{round(dur_score*0.25,1)}**")
+            st.write(f"**Total: {score_final}/100**")
+
+        # PER ACABAR: afegir hipnograma del son simulat
+        # PER ACABAR: afegir recomanacions personalitzades basades en el score
 
 with tab2:
     st.header("Simulador de fragmentació")
@@ -22,7 +88,150 @@ with tab2:
     file_sim = st.file_uploader("Aquí ⬇️", type=["edf"], key="sim_uploader")
 
     if file_sim is not None:
-        st.success(f"Fitxer {file_sim.name} preparat per a la simulació!")
+        st.success(f"S'ha llegit el fitxer: **{file_sim.name}.** Processant... (Pot trigar uns segons)")
+
+        # A partir d'aquí es realitza el mateix procés que s'ha testejat i validat a Google Colab. Per veure anotacions, conversió a èpoques AASM, trimming i degradació, consulta el notebook de Google Colab associat a aquesta pestanya.
+        
+        # Llegim les anotacions del fitxer EDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as tmp:
+            tmp.write(file_sim.read())
+            tmp_path = tmp.name
+
+        annotations = mne.read_annotations(tmp_path)
+        os.unlink(tmp_path)
+
+        # Conversió de les anotacions a èpoques de 30 segons
+        raw_stages = []
+        for ann in annotations:
+            num_epochs = int(ann['duration']) // 30
+            label = ann['description'].replace('Sleep stage ', '')
+            raw_stages.extend([label] * num_epochs)
+
+        # Conversió R&K a AASM
+        def to_aasm(stage):
+            if stage in ['3', '4']: return 'N3'
+            mapping = {'1': 'N1', '2': 'N2', 'R': 'R', 'W': 'W'}
+            return mapping.get(stage, 'W')
+
+        aasm_stages_full = [to_aasm(s) for s in raw_stages]
+
+        # Trimming
+        def trim_sleep(stages, margin_epochs=10):
+            not_wake_idx = [i for i, s in enumerate(stages) if s != 'W']
+            if not not_wake_idx: return stages
+            start = max(0, not_wake_idx[0] - margin_epochs)
+            end = min(len(stages), not_wake_idx[-1] + margin_epochs)
+            return stages[start:end]
+
+        aasm_stages = trim_sleep(aasm_stages_full)
+
+        sleep_epochs = len(aasm_stages) - 10
+        hours = (sleep_epochs * 30) // 3600
+        minutes = ((sleep_epochs * 30) % 3600) // 60
+        st.info(f"⏱️ Durada del son original: **{hours}h {minutes}min**")
+
+        # Paràmetres de simulació
+        st.divider()
+        st.subheader("⚙️ Paràmetres de simulació")
+        st.caption("Ajusta els paràmetres per controlar la intensitat de la degradació del son diürn.")
+
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            prob_wake = st.slider(
+                "Probabilitat de microdespertars (%)",
+                min_value=0.0, max_value=0.20,
+                value=0.05, step=0.01,
+                help="Percentatge de probabilitat que un individu es desperti per pocs segons durant el son, comú en el son diürn i causat per factors ambientals (un raig de llum, un soroll de porta d'un veí...). Valors recomanats: 0.03–0.08"
+            )
+        with col_p2:
+            reduccio_hores = st.slider(
+                "Reducció de durada del son (en hores)",
+                min_value=0.0, max_value=4.0,
+                value=2.5, step=0.5,
+                help="Nombre d'hores que es retallen del son original per simular la reducció de durada típica del son diürn. Segons la literatura, el son diürn presenta una reducció de 2-4 hores respecte al son nocturn. Valors recomanats: 2.0–3.5 hores."
+            )
+
+        # Amb els paràmetres seleccionats, passem a simular la degradació del son diürn.
+        def degrade_sleep_diurn(stages, prob_wake=0.05, reduccio_hores=2.5):
+            degraded = list(stages)
+            for i in range(len(degraded)):
+                if degraded[i] not in ['W', 'N3']:
+                    if random.random() < prob_wake:
+                        degraded[i] = 'W'
+            epoques_a_retallar = int((reduccio_hores * 3600) / 30)
+            epoques_a_retallar = min(epoques_a_retallar, len(degraded) // 2)
+            degraded = degraded[:len(degraded) - epoques_a_retallar]
+            if reduccio_hores > 0:
+                degraded = degraded + ['W'] * 5
+            return degraded
+
+        shifted_stages = degrade_sleep_diurn(aasm_stages, prob_wake, reduccio_hores)
+
+        if reduccio_hores > 0:
+            sleep_epochs_deg = max(0, len(shifted_stages) - 10 - 5)
+        else:
+            sleep_epochs_deg = max(0, len(shifted_stages) - 10)
+        hours_deg = (sleep_epochs_deg * 30) // 3600
+        minutes_deg = ((sleep_epochs_deg * 30) % 3600) // 60
+
+        # Estadístiques de distribució de fases
+        st.divider()
+        st.subheader("📊 Distribució de fases")
+
+        def get_stats(stages):
+            return (pd.Series(stages).value_counts(normalize=True) * 100).round(2)
+
+        phase_order = ['W', 'N1', 'N2', 'N3', 'R']
+        stats_df = pd.DataFrame({
+            'Original (%)': get_stats(aasm_stages),
+            'Simulat (%)': get_stats(shifted_stages)
+        }).fillna(0).reindex(phase_order)
+
+        st.dataframe(stats_df, use_container_width=True)
+        st.caption("Distribució percentual de les diferents fases del son en l'hipnograma original i el simulat. Observa com el son diürn tendeix a presentar més fases de vigília (W, degut als microdespertars) i menys fases N2 i REM (a causa de la influència del ritme circadiari i la reducció de durada del son).")
+
+        # Gràfics d'hipnogrames
+        st.divider()
+        st.subheader("📈 Comparació d'hipnogrames")
+
+        mapping = {'W': 0, 'R': 1, 'N1': 2, 'N2': 3, 'N3': 4}
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 6), sharex=False)
+        fig.patch.set_facecolor('#0e1117')
+
+        for ax in [ax1, ax2]:
+            ax.set_facecolor('#0e1117')
+            ax.tick_params(colors='white')
+            ax.yaxis.label.set_color('white')
+            ax.xaxis.label.set_color('white')
+            ax.title.set_color('white')
+            for spine in ax.spines.values():
+                spine.set_edgecolor('#444')
+
+        ax1.step(range(len(aasm_stages)), [mapping[s] for s in aasm_stages], color='#4da6ff', linewidth=1)
+        ax1.set_title('Hipnograma Original (Son Nocturn Real)')
+        ax1.set_yticks(range(5))
+        ax1.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
+        ax1.grid(True, alpha=0.15)
+        ax1.set_xlabel('Èpoques (30 segons)', color='white')
+
+        ax2.step(range(len(shifted_stages)), [mapping[s] for s in shifted_stages], color='#ff6b6b', linewidth=1)
+        ax2.set_title('Hipnograma Simulat (Son Diürn Fragmentat)')
+        ax2.set_yticks(range(5))
+        ax2.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
+        ax2.grid(True, alpha=0.15)
+        ax2.set_xlabel('Èpoques (30 segons)', color='white')
+
+        plt.tight_layout()
+        st.pyplot(fig)
+        st.info(f"⏱️ Durada del son simulat: **{hours_deg}h {minutes_deg}min**")
+
+        # --- DESCÀRREGA ---
+        st.divider()
+        if st.button("➡️ Enviar a Càlcul de Score"):
+            st.session_state['stages_per_score'] = shifted_stages
+            st.session_state['origen'] = 'simulat'
+            st.success("✅ Son simulat enviat a la pestanya de Score!")
+        
 
 with tab3:
     st.header("Guia de salut - Recomanacions per treballadors a torns")
