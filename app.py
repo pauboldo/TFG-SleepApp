@@ -7,84 +7,258 @@ import matplotlib.pyplot as plt
 import random
 import tempfile, os
 
-st.set_page_config(page_title="Sleep App - TFG", layout="wide")
+
+ # CONFIGURACIÓ DE LA PÀGINA
+
+st.set_page_config(page_title="DeepShift - TFG", layout="wide")
 
 st.title("DeepShift: Anàlisi i Simulació de la Fragmentació del Son 🌙☀️")
 st.markdown("##### DeepShift és una aplicació que neix a partir d'un projecte de Fi de Grau en Enginyeria Biomèdica, amb l'objectiu d'ajudar als treballadors a torns a comprendre i gestionar millor la seva qualitat de son. Aquesta eina ofereix una anàlisi detallada del son real, permet simular diferents escenaris de fragmentació del son i proporciona recomanacions personalitzades per millorar la salut del son.")
 
 tab1, tab2, tab3 = st.tabs(["📊 Calcula el teu SCORE", "🧪 Simulador de son", "💡 Recomanacions generals"])
 
+# ..................................
+
+# FUNCIONS
+
+def carregar_hipnograma(file_obj):
+    """Llegeix un fitxer EDF d'hipnograma i retorna les anotacions MNE."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as tmp:
+        tmp.write(file_obj.read())
+        tmp_path = tmp.name
+    annotations = mne.read_annotations(tmp_path)
+    os.unlink(tmp_path)
+    return annotations
+
+def anotacions_a_aasm(annotations):
+    """Converteix anotacions MNE a llista d'èpoques en format AASM."""
+    raw_stages = []
+    for ann in annotations:
+        num_epochs = int(ann['duration']) // 30
+        label = ann['description'].replace('Sleep stage ', '')
+        raw_stages.extend([label] * num_epochs)
+
+    def to_aasm(stage):
+        if stage in ['3', '4']: return 'N3'
+        mapping = {'1': 'N1', '2': 'N2', 'R': 'R', 'W': 'W'}
+        return mapping.get(stage, 'W')
+
+    return [to_aasm(s) for s in raw_stages]
+
+def trim_sleep(stages, margin_epochs=10):
+    not_wake_idx = [i for i, s in enumerate(stages) if s != 'W']
+    if not not_wake_idx: return stages
+    start = max(0, not_wake_idx[0] - margin_epochs)
+    end = min(len(stages), not_wake_idx[-1] + margin_epochs)
+    return stages[start:end]
+
+def calcular_durada(stages, descomptar_finals=0):
+    """Retorna (hours, minutes, durada_hores) descomptant marges i W finals."""
+    sleep_epochs = len(stages) - 10 - descomptar_finals
+    sleep_epochs = max(0, sleep_epochs)
+    durada_hores = (sleep_epochs * 30) / 3600
+    hours = int(durada_hores)
+    minutes = int((durada_hores - hours) * 60)
+    return hours, minutes, durada_hores
+
+# ..................................
+
+# PESTANYA 1: Anàlisi de la qualitat del son
+
 with tab1:
     st.header("Anàlisi de la qualitat del son")
 
-    # PER ACABAR: afegir via 2 del EDF
-
     if 'stages_per_score' not in st.session_state:
-        st.info("Puja el teu fitxer .edf o utilitza el Simulador per calcular el teu score.")
-    
+        # No hi ha dades encara: oferim els dos camins
+        st.markdown("### Escull el teu camí d'entrada per calcular els indicadors de la teva sessió de son:")
+        
+        col_cami1, col_cami2 = st.columns(2)
+        
+        with col_cami1:
+            with st.container(border=True):
+                st.markdown("#### 📂 Camí 1: Puja el teu hipnograma")
+                st.markdown("""Tens un fitxer .edf d'una polisomnografia que vulguis analitzar? Puja'l aquí per veure els indicadors del teu son.
+                Si no tens cap fitxer a mà, pots descarregar un fitxer de la base de dades Sleep-EDF de PhysioNet, que conté polisomnografies nocturnes reals.
+                """)
+                st.link_button("📥 Descarrega't un hipnograma en format EDF (PhysioNet)", "https://physionet.org/content/sleep-edfx/1.0.0/sleep-cassette/#files-panel")
+                file_score = st.file_uploader("Quan el tinguis llest, puja'l aquí ⬇️", type=["edf"], key="score_uploader")
+
+            if file_score is not None:
+                annotations = carregar_hipnograma(file_score)
+                aasm_full = anotacions_a_aasm(annotations)
+                stages = trim_sleep(aasm_full)
+                st.session_state['stages_per_score'] = stages
+                st.session_state['origen'] = 'directe'
+                st.rerun()
+
+        with col_cami2:
+            with st.container(border=True):
+                st.markdown("#### 🧪 Camí 2: Usa el Simulador")
+                st.markdown("Si no tens cap polisomnografia nocturna real per analitzar, però vols veure com seria una sessió de son diürn fragmentat, pots utilitzar el nostre simulador.")
+                st.info('Ves a la pestanya "**🧪 Simulador de son**", puja un fitxer .edf, ajusta els paràmetres i fes clic a **➡️ Enviar a Càlcul de Score**.')
+
     else:
+        # Tenim dades: processem independentment del camí d'entrada
         stages = st.session_state['stages_per_score']
+        descomptar = 5 if st.session_state.get('origen') == 'simulat' else 0
 
-        total_epochs = len(stages)
-        sleep_epochs = total_epochs - 10
-        total_seconds = sleep_epochs * 30
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
+        # Botó per reiniciar i canviar de camí
+        if st.button("🔄 Analitzar una altra sessió"):
+            del st.session_state['stages_per_score']
+            del st.session_state['origen']
+            st.rerun()
 
+        # Càlcul de durada
+        hours, minutes, durada_hores = calcular_durada(stages, descomptar_finals=descomptar)
+
+        # Càlcul de percentatges de fases
         counts = pd.Series(stages).value_counts()
         total = len(stages)
-
         pct_rem = round(counts.get('R', 0) / total * 100, 1)
         pct_n3  = round(counts.get('N3', 0) / total * 100, 1)
-        pct_w   = round(counts.get('W', 0) / total * 100, 1)
 
+        # Càlcul de despertars (excloent els marges de 5 èpoques per banda)
         stages_core = stages[5:-5]
         transicions_w = sum(
             1 for i in range(1, len(stages_core))
             if stages_core[i] == 'W' and stages_core[i-1] != 'W'
         )
 
-        durada_hores = (sleep_epochs * 30) / 3600
-
-        rem_score  = max(0, min(100, (pct_rem / 22.5) * 100))
-        frag_score = max(0, min(100, (1 - transicions_w / 30) * 100))
-
-        if durada_hores >= 6:
-            dur_score = 100
-        elif durada_hores >= 4:
-            dur_score = ((durada_hores - 4) / 2) * 100
+        # Etiqueta d'origen
+        if st.session_state.get('origen') == 'simulat':
+            st.info("📊 Analitzant hipnograma **simulat** provinent del Simulador (son diürn fragmentat).")
         else:
-            dur_score = 0
+            st.info("📊 Analitzant hipnograma **real** pujat directament.")
 
-        score_final = round(rem_score * 0.40 + frag_score * 0.35 + dur_score * 0.25)
+        # Visualització dels indicadors
+        st.divider()
+        st.subheader("📊 Indicadors de la sessió de son")
+        st.caption("Els llindars utilitzats s'indiquen per a cada indicador. Cap d'ells és un llindar validat específicament per a treballadors a torns, ja que aquest estudi no existeix a la literatura actual.")
+
+        col1, col2, col3 = st.columns(3)
+
+        # Indicador 1: Durada
+        with col1:
+
+            ref_durada = 6.0
+            if durada_hores >= 6:
+                color_durada = "✅"
+                label_durada = "dins de la referència"
+            elif durada_hores >= 4:
+                color_durada = "⚠️"
+                label_durada = "per sota del mínim recomanat"
+            else:
+                color_durada = "🔴"
+                label_durada = "molt per sota, recuperació compromesa"
+
+            delta_durada = durada_hores - ref_durada
+            hores_delta = int(abs(delta_durada))
+            minuts_delta = int((abs(delta_durada) - hores_delta) * 60)
+            signe = "+" if delta_durada >= 0 else "-"
+
+            st.metric(
+                label=f"{color_durada} Durada del son",
+                value=f"{hours}h {minutes}min",
+                delta=f"{signe}{hores_delta}h {minuts_delta}min respecte el mínim (6h)",
+                delta_color="normal"
+            )
+            st.caption("Referència: ≥6h per son diürn post-torn. El son diürn és més curt que el nocturn (aproximadament 2-4 hores més curt) ja que la temperatura corporal és més alta, els cicles hormonals promouen la vigília durant el dia i els factors ambientals com la llum i el soroll dificulten el descans. Tot i això, menys de 6h s'associa amb un augment de somnolència i risc per a la salut.")
+        
+        # Indicador 2: Despertars i WASO
+        with col2:
+            # Càlcul de WASO
+            stages_core = stages[5:-5]
+            primer_son = next((i for i, s in enumerate(stages_core) if s != 'W'), None)
+            if primer_son is not None:
+                waso_epochs = sum(1 for s in stages_core[primer_son:] if s == 'W')
+                waso_minuts = (waso_epochs * 30) // 60
+            else:
+                waso_minuts = 0
+
+            # Càlcul de NAW
+            transicions_w = sum(
+                1 for i in range(1, len(stages_core))
+                if stages_core[i] == 'W' and stages_core[i-1] != 'W'
+            )
+
+            if waso_minuts < 30:
+                color_waso = "✅"
+                label_waso = "dins de la referència clínica"
+            elif waso_minuts < 45:
+                color_waso = "⚠️"
+                label_waso = "lleugerament elevat"
+            else:
+                color_waso = "🔴"
+                label_waso = "clínicament significatiu"
+
+            st.metric(
+                label=f"{color_waso} WASO",
+                value=f"{waso_minuts} min",
+                delta=f"{30 - waso_minuts:+.0f} min respecte el llindar (30 min)",
+                delta_color="normal"
+            )
+        
+            st.caption("WASO normal: <30 min. Lleugerament elevat: 30–45 min. Clínicament significatiu: >45 min. El son diürn tendeix a ser més fragmentat, ja que els factors ambientals (sorolls, llum) són més freqüents que de nit. Un WASO elevat s'associa amb una qualitat de son subjectiva més baixa i més somnolència diürna.")
+        
+        # Indicador 3: REM
+        with col3:
+            if pct_rem >= 20 and pct_rem <= 25:
+                color_rem = "✅"
+                label_rem = "dins de la referència clínica"
+            elif pct_rem >= 15:
+                color_rem = "⚠️"
+                label_rem = "lleugerament per sota"
+            elif pct_rem > 25:
+                color_rem = "ℹ️"
+                label_rem = "per sobre de la referència"
+            else:
+                color_rem = "🔴"
+                label_rem = "molt baix, recuperació cognitiva compromesa"
+            
+            delta_rem = pct_rem - 20
+
+            st.metric(
+                label=f"{color_rem} Son REM",
+                value=f"{pct_rem}%",
+                delta=f"{delta_rem:+.1f}% respecte referència (20-25%)",
+                delta_color="normal"
+            )
+            st.caption("La fase REM és la fase del son on es produeix la major part de la recuperació cognitiva i emocional, necessària per a la consolidació de la memòria i el tractament emocional. Els estudis demostren que és el predictor més fort de qualitat subjectiva del son, de manera que un REM baix s'associa amb una sensació de no haver descansat, encara que la durada total del son sigui adequada. En son diürn, el rellotge biològic tendeix a suprimir el REM, però valors molt baixos (<15%) poden indicar un son de mala qualitat.")
+
+        # Recomanacions personalitzades basades en els indicadors
+        st.divider()
+        st.subheader("💡 Recomanacions basades en els teus resultats")
+
+        recomanacions_actives = False
+
+        if durada_hores < 6:
+            recomanacions_actives = True
+            st.warning(f"**Durada insuficient ({hours}h {minutes}min).** Has dormit menys de les 6 hores mínimes recomanades per a son diürn post-torn. Considera avançar l'hora d'inici del son o fer una migdiada de rescat de 20-30 minuts abans del proper torn.")
+
+        if transicions_w > 10 or waso_minuts >= 20:
+            recomanacions_actives = True
+            st.warning(f"**Son fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). Prova de dormir amb antifaç i taps per reduir estímuls ambientals, i assegura't que el dormitori estigui completament fosc i silenciós.")
+        if pct_rem < 20:
+            recomanacions_actives = True
+            st.warning(f"**Son REM baix ({pct_rem}%).** El son REM és clau per a la recuperació cognitiva i emocional. En son diürn, el rellotge biològic tendeix a suprimir-lo activament. Evita l'alcohol i intenta no tallar el son amb l'alarma si pots evitar-ho, ja que el REM es concentra als cicles finals.")
+
+        if not recomanacions_actives:
+            st.success("**Bona sessió de son.** Has assolit els tres indicadors dins de les referències disponibles. Recorda que el son diürn sempre serà més curt i fràgil que el nocturn; has tret el màxim de les teves circumstàncies.")
 
         st.divider()
-        st.subheader("📊 Resultats")
+        st.caption("""⚠️ **Recorda:** els llindars mostrats representen el millor que es pot assolir en les teves circumstàncies com a treballador a torns, 
+        no un son òptim en termes absoluts. Per la naturalesa del son diürn, el teu rellotge biològic treballa en contra teva: 
+        6 hores de son diürn equivalen fisiològicament a menys descans que 6 hores de son nocturn. 
+        Un indicador en verd vol dir que has tret el que és el mínim correcte dins les teves possibilitats, no que el teu son sigui equivalent al d'una persona amb horari convencional.""")
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("⏱️ Durada", f"{hours}h {minutes}min")
-        col2.metric("💤 REM", f"{pct_rem}%")
-        col3.metric("🌊 N3", f"{pct_n3}%")
-        col4.metric("⚡ Despertars", f"{transicions_w}")
+# .................................
 
-        st.divider()
-        st.subheader("🏆 Score de qualitat del son")
-
-        color = "green" if score_final >= 70 else "orange" if score_final >= 50 else "red"
-        st.markdown(f"## :{color}[{score_final} / 100]")
-
-        with st.expander("🔍 Descomposició del score"):
-            st.write(f"- **REM** ({pct_rem}% → {round(rem_score,1)} pts) × 0.40 = **{round(rem_score*0.40,1)}**")
-            st.write(f"- **Fragmentació** ({transicions_w} despertars → {round(frag_score,1)} pts) × 0.35 = **{round(frag_score*0.35,1)}**")
-            st.write(f"- **Durada** ({durada_hores:.1f}h → {round(dur_score,1)} pts) × 0.25 = **{round(dur_score*0.25,1)}**")
-            st.write(f"**Total: {score_final}/100**")
-
-        # PER ACABAR: afegir hipnograma del son simulat
-        # PER ACABAR: afegir recomanacions personalitzades basades en el score
-
+# PESTANYA 2: Simulador de fragmentació del son diürn
 with tab2:
     st.header("Simulador de fragmentació")
     st.write("Si no acostumes a dormir de nit però ets curiós, pots simular l'efecte de la fragmentació del son diürn a partir d'una polisomnografia nocturna. Puja el teu fitxer .edf per començar.")
+    st.markdown("**Nota:** Si no tens un fitxer .edf a mà, pots descarregar un fitxer de prova de la base de dades Sleep-EDF de PhysioNet, que conté polisomnografies nocturnes reals. Aquestes polisomnografies han estat anotades manualment per experts i són perfectes per veure com el nostre simulador transforma un son nocturn real en una versió més fragmentada i curta, típica del son diürn.")
+    st.link_button("📥 Descarrega't un hipnograma en format EDF (PhysioNet)", "https://physionet.org/content/sleep-edfx/1.0.0/sleep-cassette/#files-panel")
     file_sim = st.file_uploader("Aquí ⬇️", type=["edf"], key="sim_uploader")
 
     if file_sim is not None:
@@ -93,41 +267,15 @@ with tab2:
         # A partir d'aquí es realitza el mateix procés que s'ha testejat i validat a Google Colab. Per veure anotacions, conversió a èpoques AASM, trimming i degradació, consulta el notebook de Google Colab associat a aquesta pestanya.
         
         # Llegim les anotacions del fitxer EDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".edf") as tmp:
-            tmp.write(file_sim.read())
-            tmp_path = tmp.name
-
-        annotations = mne.read_annotations(tmp_path)
-        os.unlink(tmp_path)
+        annotations = carregar_hipnograma(file_sim)
 
         # Conversió de les anotacions a èpoques de 30 segons
-        raw_stages = []
-        for ann in annotations:
-            num_epochs = int(ann['duration']) // 30
-            label = ann['description'].replace('Sleep stage ', '')
-            raw_stages.extend([label] * num_epochs)
-
-        # Conversió R&K a AASM
-        def to_aasm(stage):
-            if stage in ['3', '4']: return 'N3'
-            mapping = {'1': 'N1', '2': 'N2', 'R': 'R', 'W': 'W'}
-            return mapping.get(stage, 'W')
-
-        aasm_stages_full = [to_aasm(s) for s in raw_stages]
+        aasm_stages_full = anotacions_a_aasm(annotations)
 
         # Trimming
-        def trim_sleep(stages, margin_epochs=10):
-            not_wake_idx = [i for i, s in enumerate(stages) if s != 'W']
-            if not not_wake_idx: return stages
-            start = max(0, not_wake_idx[0] - margin_epochs)
-            end = min(len(stages), not_wake_idx[-1] + margin_epochs)
-            return stages[start:end]
-
         aasm_stages = trim_sleep(aasm_stages_full)
 
-        sleep_epochs = len(aasm_stages) - 10
-        hours = (sleep_epochs * 30) // 3600
-        minutes = ((sleep_epochs * 30) % 3600) // 60
+        hours, minutes, _ = calcular_durada(aasm_stages)
         st.info(f"⏱️ Durada del son original: **{hours}h {minutes}min**")
 
         # Paràmetres de simulació
@@ -208,14 +356,14 @@ with tab2:
                 spine.set_edgecolor('#444')
 
         ax1.step(range(len(aasm_stages)), [mapping[s] for s in aasm_stages], color='#4da6ff', linewidth=1)
-        ax1.set_title('Hipnograma Original (Son Nocturn Real)')
+        ax1.set_title('Hipnograma Original (Son Nocturn)')
         ax1.set_yticks(range(5))
         ax1.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
         ax1.grid(True, alpha=0.15)
         ax1.set_xlabel('Èpoques (30 segons)', color='white')
 
         ax2.step(range(len(shifted_stages)), [mapping[s] for s in shifted_stages], color='#ff6b6b', linewidth=1)
-        ax2.set_title('Hipnograma Simulat (Son Diürn Fragmentat)')
+        ax2.set_title('Hipnograma Simulat (Son Diürn)')
         ax2.set_yticks(range(5))
         ax2.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
         ax2.grid(True, alpha=0.15)
@@ -225,14 +373,20 @@ with tab2:
         st.pyplot(fig)
         st.info(f"⏱️ Durada del son simulat: **{hours_deg}h {minutes_deg}min**")
 
-        # --- DESCÀRREGA ---
+        # Sempre que hi ha shifted_stages calculades, les guardem en una clau temporal
+        st.session_state['_shifted_temp'] = shifted_stages
+
         st.divider()
         if st.button("➡️ Enviar a Càlcul de Score"):
-            st.session_state['stages_per_score'] = shifted_stages
+            st.session_state['stages_per_score'] = st.session_state['_shifted_temp']
             st.session_state['origen'] = 'simulat'
-            st.success("✅ Son simulat enviat a la pestanya de Score!")
+            st.rerun()  # <- aquesta és la clau
         
+        if st.session_state.get('origen') == 'simulat' and 'stages_per_score' in st.session_state:
+            st.success("✅ Son simulat enviat correctament. Fes clic a **📊 Calcula el teu SCORE** per veure els indicadors.")
+# ...................................
 
+# PESTANYA 3: Recomanacions generals per a treballadors a torns
 with tab3:
     st.header("Guia de salut - Recomanacions per treballadors a torns")
      
