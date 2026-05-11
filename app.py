@@ -13,7 +13,7 @@ import tempfile, os
 st.set_page_config(page_title="DeepShift - TFG", layout="wide")
 
 st.title("DeepShift: Anàlisi i Simulació de la Fragmentació del Son 🌙☀️")
-st.markdown("##### DeepShift és una aplicació que neix a partir d'un projecte de Fi de Grau en Enginyeria Biomèdica, amb l'objectiu d'ajudar als treballadors a torns a comprendre i gestionar millor la seva qualitat de son. Aquesta eina ofereix una anàlisi detallada del son real, permet simular diferents escenaris de fragmentació del son i proporciona recomanacions personalitzades per millorar la salut del son.")
+st.markdown("##### DeepShift és una aplicació que neix a partir d'un projecte de Fi de Grau en Enginyeria Biomèdica, amb l'objectiu d'ajudar als treballadors a torns a comprendre i gestionar millor la seva qualitat de son. Aquesta eina ofereix una anàlisi detallada del son, permet simular diferents escenaris de fragmentació del son i proporciona recomanacions personalitzades per millorar la salut del son.")
 
 tab1, tab2, tab3 = st.tabs(["📊 Calcula el teu SCORE", "🧪 Simulador de son", "💡 Recomanacions generals"])
 
@@ -194,8 +194,8 @@ with tab1:
             st.metric(
                 label=f"{color_waso} WASO",
                 value=f"{waso_minuts} min",
-                delta=f"{30 - waso_minuts:+.0f} min respecte el llindar (30 min)",
-                delta_color="normal"
+                delta=label_waso,
+                delta_color="off"
             )
         
             st.caption("WASO normal: <30 min. Lleugerament elevat: 30–45 min. Clínicament significatiu: >45 min. El son diürn tendeix a ser més fragmentat, ja que els factors ambientals (sorolls, llum) són més freqüents que de nit. Un WASO elevat s'associa amb una qualitat de son subjectiva més baixa i més somnolència diürna.")
@@ -231,20 +231,30 @@ with tab1:
 
         recomanacions_actives = False
 
-        if durada_hores < 6:
+        if durada_hores < 4:
             recomanacions_actives = True
-            st.warning(f"**Durada insuficient ({hours}h {minutes}min).** Has dormit menys de les 6 hores mínimes recomanades per a son diürn post-torn. Considera avançar l'hora d'inici del son o fer una migdiada de rescat de 20-30 minuts abans del proper torn.")
+            st.error(f"**Durada crítica ({hours}h {minutes}min).** Has dormit menys de 4 hores, un temps insuficient per a qualsevol tipus de recuperació física o cognitiva. Amb aquesta durada, el teu cos no ha tingut temps ni de completar els cicles de son bàsics. És probable que sentis una fatiga intensa, reflexos lents i dificultat per concentrar-te durant el dia. Si encara no has anat a treballar avui, tingues molt present que no estàs al 100% i estàs molt propens a tenir errors. En cas de tenir temps de marge entre ara i anar a treballar, és recomanable fer una migdiada. Si aquesta situació es repeteix, el risc d'errors i accidents laborals augmenta significativament. Prioritza el son per sobre de qualsevol altra activitat i considera parlar amb el teu metge si el problema és recurrent.")
 
-        if transicions_w > 10 or waso_minuts >= 20:
+        elif durada_hores < 6:
             recomanacions_actives = True
-            st.warning(f"**Son fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). Prova de dormir amb antifaç i taps per reduir estímuls ambientals, i assegura't que el dormitori estigui completament fosc i silenciós.")
+            st.warning(f"**Durada insuficient ({hours}h {minutes}min).** Has dormit menys de les 6 hores mínimes recomanades per a son diürn post-torn. És possible que sentis somnolència durant el dia i que la teva recuperació sigui incompleta. Intenta ajustar la teva rutina per prioritzar el son, com anar a dormir més aviat, evitar fer migdiades llargues per tal de no interferir amb el son nocturn i crear un entorn de son òptim (fosc, silenciós i fresc).")
+    
+        if transicions_w > 45:
+            recomanacions_actives = True
+            st.error(f"**Son molt fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). El teu son ha estat interromput de forma severa. Quan el son es fragmenta tant, el cos no pot completar els cicles de son correctament i la recuperació és molt limitada, fins i tot si la durada total sembla acceptable. Els microdespertars són molt comuns en son diürn i les causes principals són l'excés de llum a l'habitació o sorolls ambientals. Tants microdespertars indiquen que el teu entorn de son no és òptim: potser vius enmig de la ciutat i sents tot el trànsit, o bé convius amb molta gent a casa, o t'entra un raig de llum directe a l'habitació. Considera instal·lar cortines opaques o blackout, usar tapons per les orelles o una màquina de soroll blanc, i parlar amb les persones amb qui convius perquè evitin fer soroll durant les hores en què dorms. Sembla que vius en un entorn molt sorollós: una màscara de son i uns taps de qualitat poden marcar la diferència.")
+
+        elif transicions_w > 30:
+            recomanacions_actives = True
+            st.warning(f"**Son fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). Despertar-se durant pocs segons enmig d'una sessió de son és molt comú quan es dorm pel matí després d'un torn de nit. Tens molts estímuls i pertorbacions al voltant: lumíniques, com rajos de llum que entren a l'habitació; o sonores, com el clàxon d'un cotxe, cops de porta de veïns o el soroll d'obres del carrer. Per combatre aquestes petites fragmentacions del son, prova de dormir amb antifaç i taps per reduir estímuls ambientals, i procura que el dormitori sigui el més fosc i silenciós possible.")
+    
         if pct_rem < 20:
             recomanacions_actives = True
-            st.warning(f"**Son REM baix ({pct_rem}%).** El son REM és clau per a la recuperació cognitiva i emocional. En son diürn, el rellotge biològic tendeix a suprimir-lo activament. Evita l'alcohol i intenta no tallar el son amb l'alarma si pots evitar-ho, ja que el REM es concentra als cicles finals.")
-
+            st.warning(f"**Son REM baix ({pct_rem}%).** El son REM és clau per a la recuperació cognitiva i emocional, així que és possible que els teus nivells d'alerta siguin baixos. El son consta un seguit de fases que formen un cicle, i la fase REM es fa cada cop més llarga a mesura que transcorre la nit. En son diürn, el ritme circadiari talla el son prematurament i no deixa gaudir de les últimes hores de son riques en REM. Intenta no tallar el son amb l'alarma si pots evitar-ho i allargar la durada del son el màxim possible, no subestimis la important relació entre la salut i el dormir.")
+            
         if not recomanacions_actives:
-            st.success("**Bona sessió de son.** Has assolit els tres indicadors dins de les referències disponibles. Recorda que el son diürn sempre serà més curt i fràgil que el nocturn; has tret el màxim de les teves circumstàncies.")
-
+            st.success("**Bona sessió de son.** Has assolit els tres indicadors dins de les referències disponibles. Recorda que el son diürn sempre serà més curt i fràgil que el nocturn; has tret el màxim dins les teves circumstàncies.")
+        
+        st.info("Consulta les recomanacions específiques per al teu torn a la pestanya **💡 Recomanacions generals** per veure estratègies adaptades a les teves necessitats.")
         st.divider()
         st.caption("""⚠️ **Recorda:** els llindars mostrats representen el millor que es pot assolir en les teves circumstàncies com a treballador a torns, 
         no un son òptim en termes absoluts. Per la naturalesa del son diürn, el teu rellotge biològic treballa en contra teva: 
@@ -287,9 +297,9 @@ with tab2:
         with col_p1:
             prob_wake = st.slider(
                 "Probabilitat de microdespertars (%)",
-                min_value=0.0, max_value=0.20,
+                min_value=0.0, max_value=0.15,
                 value=0.05, step=0.01,
-                help="Percentatge de probabilitat que un individu es desperti per pocs segons durant el son, comú en el son diürn i causat per factors ambientals (un raig de llum, un soroll de porta d'un veí...). Valors recomanats: 0.03–0.08"
+                help="Percentatge de probabilitat que cada època de 30 segons es converteixi en un microdespertar, comú en el son diürn i causat per factors ambientals (un raig de llum, un soroll de porta d'un veí...). Valors recomanats: 0.03–0.08. Valors superiors a 0.10 es consideren d'ús únicament experimental."
             )
         with col_p2:
             reduccio_hores = st.slider(
@@ -343,8 +353,9 @@ with tab2:
         st.subheader("📈 Comparació d'hipnogrames")
 
         mapping = {'W': 0, 'R': 1, 'N1': 2, 'N2': 3, 'N3': 4}
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 6), sharex=False)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
         fig.patch.set_facecolor('#0e1117')
+        max_epochs = max(len(aasm_stages), len(shifted_stages))
 
         for ax in [ax1, ax2]:
             ax.set_facecolor('#0e1117')
@@ -352,6 +363,7 @@ with tab2:
             ax.yaxis.label.set_color('white')
             ax.xaxis.label.set_color('white')
             ax.title.set_color('white')
+            ax.set_xlim(0, max_epochs)
             for spine in ax.spines.values():
                 spine.set_edgecolor('#444')
 
@@ -359,14 +371,14 @@ with tab2:
         ax1.set_title('Hipnograma Original (Son Nocturn)')
         ax1.set_yticks(range(5))
         ax1.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
-        ax1.grid(True, alpha=0.15)
+        ax1.grid(True, alpha=0.2)
         ax1.set_xlabel('Èpoques (30 segons)', color='white')
 
         ax2.step(range(len(shifted_stages)), [mapping[s] for s in shifted_stages], color='#ff6b6b', linewidth=1)
         ax2.set_title('Hipnograma Simulat (Son Diürn)')
         ax2.set_yticks(range(5))
         ax2.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
-        ax2.grid(True, alpha=0.15)
+        ax2.grid(True, alpha=0.2)
         ax2.set_xlabel('Èpoques (30 segons)', color='white')
 
         plt.tight_layout()
@@ -431,15 +443,12 @@ with tab3:
 
         if 5 <= h_central < 13:
             torn_detectat = "🌅 MATÍ"
-            missatge = "Has d'enfocar-te en la higiene vespertina i llum natural en despertar."
         elif 13 <= h_central < 21:
             torn_detectat = "🌆 TARDA"
-            missatge = "Prioritza la descompressió en arribar a casa per no retardar el son."
         else:
             torn_detectat = "🌃 NIT"
-            missatge = "Compte amb el bloqueig de llum al matí i la pèrdua de REM/N2."
 
-        st.info(f"**Torn detectat: {torn_detectat}**. {missatge}")
+        st.info(f"**Torn detectat: {torn_detectat}**.")
 
     with st.expander("🌅 Recomanacions per al Torn de Matí"):
         st.write("""
