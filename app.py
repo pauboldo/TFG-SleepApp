@@ -205,12 +205,15 @@ with tab1:
             if pct_rem >= 20 and pct_rem <= 25:
                 color_rem = "✅"
                 label_rem = "dins de la referència clínica"
-            elif pct_rem >= 15:
-                color_rem = "⚠️"
-                label_rem = "lleugerament per sota"
+                
             elif pct_rem > 25:
                 color_rem = "ℹ️"
                 label_rem = "per sobre de la referència"
+            
+            elif pct_rem >= 15:
+                color_rem = "⚠️"
+                label_rem = "lleugerament per sota"
+            
             else:
                 color_rem = "🔴"
                 label_rem = "molt baix, recuperació cognitiva compromesa"
