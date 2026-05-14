@@ -267,11 +267,11 @@ with tab1:
             recomanacions_actives = True
             st.warning(f"**Durada insuficient ({hours}h {minutes}min).** Has dormit menys de les 6 hores mínimes recomanades per a son diürn post-torn. És possible que sentis somnolència durant el dia i que la teva recuperació sigui incompleta. Intenta ajustar la teva rutina per prioritzar el son, com anar a dormir més aviat, evitar fer migdiades llargues per tal de no interferir amb el son nocturn i crear un entorn de son òptim (fosc, silenciós i fresc).")
     
-        if transicions_w > 45:
+        if waso_minuts > 45:
             recomanacions_actives = True
             st.error(f"**Son molt fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). El teu son ha estat interromput de forma severa. Quan el son es fragmenta tant, el cos no pot completar els cicles de son correctament i la recuperació és molt limitada, fins i tot si la durada total sembla acceptable. Els microdespertars són molt comuns en son diürn i les causes principals són l'excés de llum a l'habitació o sorolls ambientals. Tants microdespertars indiquen que el teu entorn de son no és òptim: potser vius enmig de la ciutat i sents tot el trànsit, o bé convius amb molta gent a casa, o t'entra un raig de llum directe a l'habitació. Considera instal·lar cortines opaques o blackout, usar tapons per les orelles o una màquina de soroll blanc, i parlar amb les persones amb qui convius perquè evitin fer soroll durant les hores en què dorms. Sembla que vius en un entorn molt sorollós: una màscara de son i uns taps de qualitat poden marcar la diferència.")
 
-        elif transicions_w > 30:
+        elif waso_minuts > 30:
             recomanacions_actives = True
             st.warning(f"**Son fragmentat** ({transicions_w} despertars, {waso_minuts} minuts despert dins del son). Despertar-se durant pocs segons enmig d'una sessió de son és molt comú quan es dorm pel matí després d'un torn de nit. Tens molts estímuls i pertorbacions al voltant: lumíniques, com rajos de llum que entren a l'habitació; o sonores, com el clàxon d'un cotxe, cops de porta de veïns o el soroll d'obres del carrer. Per combatre aquestes petites fragmentacions del son, prova de dormir amb antifaç i taps per reduir estímuls ambientals, i procura que el dormitori sigui el més fosc i silenciós possible.")
     
