@@ -328,7 +328,7 @@ with tab2:
         with col_p1:
             prob_wake = st.slider(
                 "Probabilitat de microdespertars (%)",
-                min_value=0.0, max_value=0.15,
+                min_value=0.0, max_value=0.2,
                 value=0.05, step=0.01,
                 help="Percentatge de probabilitat que cada època de 30 segons es converteixi en un microdespertar, comú en el son diürn i causat per factors ambientals (un raig de llum, un soroll de porta d'un veí...). Valors recomanats: 0.03–0.08. Valors superiors a 0.10 es consideren d'ús únicament experimental."
             )
