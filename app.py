@@ -225,6 +225,34 @@ with tab1:
             )
             st.caption("La fase REM és la fase del son on es produeix la major part de la recuperació cognitiva i emocional, necessària per a la consolidació de la memòria i el tractament emocional. Els estudis demostren que és el predictor més fort de qualitat subjectiva del son, de manera que un REM baix s'associa amb una sensació de no haver descansat, encara que la durada total del son sigui adequada. En son diürn, el rellotge biològic tendeix a suprimir el REM, però valors molt baixos (<15%) poden indicar un son de mala qualitat.")
 
+        # Hipnograma de la sessió del son
+        st.divider()
+        st.subheader("📈 Hipnograma de la sessió de son")
+
+        mapping = {'W': 0, 'R': 1, 'N1': 2, 'N2': 3, 'N3': 4}
+        fig, ax = plt.subplots(figsize=(14, 3))
+        fig.patch.set_facecolor('#0e1117')
+        ax.set_facecolor('#0e1117')
+        ax.tick_params(colors='white')
+        ax.yaxis.label.set_color('white')
+        ax.xaxis.label.set_color('white')
+        ax.title.set_color('white')
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#444')
+
+        color = '#ff6b6b' if st.session_state.get('origen') == 'simulat' else '#4da6ff'
+        titol = 'Hipnograma Simulat (Son Diürn Fragmentat)' if st.session_state.get('origen') == 'simulat' else 'Hipnograma Real (Son Nocturn)'
+
+        ax.step(range(len(stages)), [mapping[s] for s in stages], color=color, linewidth=1)
+        ax.set_title(titol, color='white')
+        ax.set_yticks(range(5))
+        ax.set_yticklabels(['W', 'REM', 'N1', 'N2', 'N3'], color='white')
+        ax.grid(True, alpha=0.2)
+        ax.set_xlabel('Èpoques (30 segons)', color='white')
+
+        plt.tight_layout()
+        st.pyplot(fig)
+
         # Recomanacions personalitzades basades en els indicadors
         st.divider()
         st.subheader("💡 Recomanacions basades en els teus resultats")
